@@ -1,4 +1,6 @@
 {
+  description = "A simple rust flake template with pre-commits, package builds and configurable rust versions.";
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
@@ -7,16 +9,21 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     naersk.url = "github:nix-community/naersk";
-    git-hooks.url = "github:cachix/git-hooks.nix";
+    git-hooks-nix.url = "github:cachix/git-hooks.nix";
   };
 
   outputs = {flake-parts, ...} @ inputs:
     flake-parts.lib.mkFlake {inherit inputs;} {
-      imports = [inputs.git-hooks.flakeModule];
+      imports = [inputs.git-hooks-nix.flakeModule];
 
       systems = ["x86_64-linux" "aarch64-linux" "aarch64-darwin"];
 
-      perSystem = {system, ...}: let
+      perSystem = {
+        system,
+        config,
+        lib,
+        ...
+      }: let
         pkgs = import inputs.nixpkgs {
           inherit system;
           overlays = [inputs.rust-overlay.overlays.default];
@@ -34,6 +41,7 @@
 
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
+            pre-commit
             rustToolchain
             rust-analyzer
             openssl
@@ -43,17 +51,21 @@
           RUST_BACKTRACE = 1;
 
           shellHook = ''
+            ${config.pre-commit.installationScript}
             echo "🦀 $(rustc --version)"
           '';
         };
 
         pre-commit = {
-          check.enable = true;
-          settings.hooks = {
-            rustfmt.enable = true;
-            clippy = {
-              enable = true;
-              settings.offline = false;
+          check.enable = false; # Disabled because clippy needs network access for dependencies
+          settings = {
+            hooks = {
+              rustfmt.enable = true;
+              clippy.enable = true;
+            };
+            tools = {
+              cargo = lib.mkForce rustToolchain;
+              clippy = lib.mkForce rustToolchain;
             };
           };
         };
